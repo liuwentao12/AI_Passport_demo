@@ -9,6 +9,7 @@
 #include "board/keys.h"
 #include "board/buzzer.h"
 #include "board/pn532.h"
+#include "ui/boot_screen.h"
 #include "ui/port/lvgl_port.h"
 #include "ui/port/touch_calibration.h"
 #include "ui/ui.h"
@@ -70,41 +71,105 @@ static const ui_page_t s_key_pages[BOARD_KEY_COUNT] = {
     [BOARD_KEY4] = UI_PAGE_SETTINGS,
 };
 
+enum {
+    PERIPHERALS_DONE = 1U << 0,
+    KEYS_READY = 1U << 1,
+    BUZZER_READY = 1U << 2,
+};
+
+/* Only the UI task reads or writes the startup state below. */
+static uint32_t s_peripherals;
+static bool s_touch_initialized;
+
+static void peripheral_init_task(void *argument)
+{
+    TaskHandle_t ui = argument;
+    uint32_t result = PERIPHERALS_DONE;
+    const esp_err_t buzzer = board_buzzer_init();
+    if (buzzer == ESP_OK) result |= BUZZER_READY;
+    else ESP_LOGW("app", "Buzzer unavailable: %s", esp_err_to_name(buzzer));
+
+    const esp_err_t keys = board_keys_init();
+    if (keys == ESP_OK) result |= KEYS_READY;
+    else ESP_LOGW("app", "Keys disabled: %s", esp_err_to_name(keys));
+    xTaskNotify(ui, result, eSetBits);
+    vTaskDelete(NULL);
+}
+
+static bool touch_available(void)
+{
+    return s_touch_initialized && board_touch_is_available();
+}
+
+static void strike_if_ready(void)
+{
+    if (s_peripherals & BUZZER_READY) board_buzzer_strike();
+}
+
+static const char *prepare_home(void)
+{
+    ui_init(identity_demo(), touch_available(), strike_if_ready);
+    if (!(s_peripherals & PERIPHERALS_DONE)) return "PERIPHERALS STILL STARTING";
+    if (!s_touch_initialized || !(s_peripherals & KEYS_READY) ||
+        !(s_peripherals & BUZZER_READY)) return "PERIPHERALS DEGRADED";
+    if (!touch_available()) return "TOUCH SETUP REQUIRED";
+    return NULL;
+}
+
 static void ui_task(void *argument)
 {
     (void)argument;
-    ui_port_init();
-    ui_touch_calibrate();
-    esp_err_t buzzer_status = board_buzzer_init();
-    if (buzzer_status != ESP_OK) {
-        ESP_LOGW("app", "Buzzer unavailable: %s", esp_err_to_name(buzzer_status));
+    const esp_err_t touch = ui_port_init();
+    s_touch_initialized = touch == ESP_OK;
+    if (touch != ESP_OK) ESP_LOGW("app", "Touch disabled: %s", esp_err_to_name(touch));
+
+    if (xTaskCreate(peripheral_init_task, "peripheral_init", 3072,
+                    xTaskGetCurrentTaskHandle(), 3, NULL) != pdPASS) {
+        s_peripherals = PERIPHERALS_DONE;
+        ESP_LOGW("app", "Could not start peripheral initialization task");
     }
-    ui_init(identity_demo(), board_touch_is_available(), board_buzzer_strike);
-    esp_err_t keys_status = board_keys_init();
-    if (keys_status != ESP_OK) {
-        ESP_LOGE("app", "Keys disabled: %s", esp_err_to_name(keys_status));
+    if (!boot_screen_start(prepare_home)) {
+        ESP_LOGW("app", "Could not start boot animation");
+        prepare_home();
     }
-    ESP_LOGI("app", "Identity UI ready; touch %s", board_touch_is_available() ? "enabled" : "not configured");
+    if (s_peripherals == PERIPHERALS_DONE) {
+        boot_screen_set_status("PERIPHERALS UNAVAILABLE");
+    }
+
+    bool calibrate = s_touch_initialized && !touch_available();
     for (;;) {
-        board_buzzer_poll();
-        nfc_update_t nfc;
-        if (s_nfc_updates && xQueueReceive(s_nfc_updates, &nfc, 0) == pdTRUE) {
-            ui_set_nfc_status(nfc.text);
-            if (nfc.finished) s_nfc_busy = false;
+        uint32_t result;
+        if (xTaskNotifyWait(0, UINT32_MAX, &result, 0) == pdTRUE) {
+            s_peripherals = result;
+            boot_screen_set_status((result & (KEYS_READY | BUZZER_READY)) == (KEYS_READY | BUZZER_READY)
+                                   ? "KEYS AND BUZZER CONFIGURED" : "PERIPHERALS DEGRADED");
         }
-        voice_chat_update_t voice;
-        if (voice_chat_poll(&voice)) voice_chat_page_update(&voice);
-        identity_t update;
-        if (xQueueReceive(s_updates, &update, 0) == pdTRUE) {
-            ui_set_identity(&update);
-        }
-        const uint32_t presses = keys_status == ESP_OK ? board_keys_poll() : 0;
-        for (int key = 0; key < BOARD_KEY_COUNT; ++key) {
-            if (presses & (UINT32_C(1) << key)) {
-                ui_show_page(s_key_pages[key]);
-                if (key == BOARD_KEY1) start_nfc_share();
-                if (key == BOARD_KEY3) voice_chat_press();
-                break;
+        if (!boot_screen_active()) {
+            if (calibrate) {
+                ui_touch_calibrate();
+                ui_set_touch_available(touch_available());
+                calibrate = false;
+            }
+            if (s_peripherals & BUZZER_READY) board_buzzer_poll();
+            nfc_update_t nfc;
+            if (s_nfc_updates && xQueueReceive(s_nfc_updates, &nfc, 0) == pdTRUE) {
+                ui_set_nfc_status(nfc.text);
+                if (nfc.finished) s_nfc_busy = false;
+            }
+            voice_chat_update_t voice;
+            if (voice_chat_poll(&voice)) voice_chat_page_update(&voice);
+            identity_t update;
+            if (xQueueReceive(s_updates, &update, 0) == pdTRUE) {
+                ui_set_identity(&update);
+            }
+            const uint32_t presses = (s_peripherals & KEYS_READY) ? board_keys_poll() : 0;
+            for (int key = 0; key < BOARD_KEY_COUNT; ++key) {
+                if (presses & (UINT32_C(1) << key)) {
+                    ui_show_page(s_key_pages[key]);
+                    if (key == BOARD_KEY1) start_nfc_share();
+                    if (key == BOARD_KEY3) voice_chat_press();
+                    break;
+                }
             }
         }
         uint32_t delay = lv_timer_handler();

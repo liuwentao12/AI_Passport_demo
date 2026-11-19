@@ -84,6 +84,12 @@ static void update_hint(void)
     s_displayed_hint = text;
 }
 
+void ui_set_touch_available(bool available)
+{
+    s_default_hint = available ? "LOCAL DEMO PROFILE" : "TOUCH NOT CONFIGURED";
+    update_hint();
+}
+
 void ui_set_nfc_status(const char *status)
 {
     s_nfc_status = status;

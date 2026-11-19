@@ -33,10 +33,9 @@ static void read_touch(lv_indev_t *input, lv_indev_data_t *data)
     }
 }
 
-void ui_port_init(void)
+esp_err_t ui_port_init(void)
 {
     ESP_ERROR_CHECK(board_display_init());
-    ESP_ERROR_CHECK(board_touch_init());
     lv_init();
     lv_tick_set_cb(tick_ms);
     lv_display_t *display = lv_display_create(BOARD_LCD_WIDTH, BOARD_LCD_HEIGHT);
@@ -48,9 +47,12 @@ void ui_port_init(void)
     lv_display_set_buffers(display, buffer, NULL, bytes, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(display, flush);
 
+    const esp_err_t touch_status = board_touch_init();
+    if (touch_status != ESP_OK) return touch_status;
     lv_indev_t *input = lv_indev_create();
-    ESP_ERROR_CHECK(input ? ESP_OK : ESP_ERR_NO_MEM);
+    if (!input) return ESP_ERR_NO_MEM;
     lv_indev_set_type(input, LV_INDEV_TYPE_POINTER);
     lv_indev_set_display(input, display);
     lv_indev_set_read_cb(input, read_touch);
+    return ESP_OK;
 }

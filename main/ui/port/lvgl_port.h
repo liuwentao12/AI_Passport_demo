@@ -1,4 +1,6 @@
 #pragma once
 
-/* Called once by the UI task. Fatal errors abort startup. */
-void ui_port_init(void);
+#include "esp_err.h"
+
+/* Called once by the UI task. Display errors are fatal; returns touch setup status. */
+esp_err_t ui_port_init(void);

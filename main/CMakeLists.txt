@@ -3,7 +3,7 @@ idf_component_register(
          "app/app.c" "app/identity.c" "app/voice_chat.c" "app/siliconflow.c"
          "board/display.c" "board/touch.c" "board/touch_transform.c" "board/keys.c" "board/buzzer.c"
          "ui/port/touch_calibration.c"
-         "ui/port/lvgl_port.c" "ui/ui.c" "ui/ui_theme.c"
+         "ui/port/lvgl_port.c" "ui/ui.c" "ui/ui_theme.c" "ui/boot_screen.c"
          "ui/pages/identity_page.c" "ui/pages/details_page.c"
          "ui/pages/wooden_fish_page.c" "ui/pages/wooden_fish_art.c"
          "board/microphone.c" "board/pn532.c" "ui/pages/voice_chat_page.c"
