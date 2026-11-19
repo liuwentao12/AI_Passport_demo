@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "board/touch.h"
 #include "board/keys.h"
+#include "board/buzzer.h"
 #include "ui/port/lvgl_port.h"
 #include "ui/port/touch_calibration.h"
 #include "ui/ui.h"
@@ -24,13 +25,18 @@ static void ui_task(void *argument)
     (void)argument;
     ui_port_init();
     ui_touch_calibrate();
-    ui_init(identity_demo(), board_touch_is_available());
+    esp_err_t buzzer_status = board_buzzer_init();
+    if (buzzer_status != ESP_OK) {
+        ESP_LOGW("app", "Buzzer unavailable: %s", esp_err_to_name(buzzer_status));
+    }
+    ui_init(identity_demo(), board_touch_is_available(), board_buzzer_strike);
     esp_err_t keys_status = board_keys_init();
     if (keys_status != ESP_OK) {
         ESP_LOGE("app", "Keys disabled: %s", esp_err_to_name(keys_status));
     }
     ESP_LOGI("app", "Identity UI ready; touch %s", board_touch_is_available() ? "enabled" : "not configured");
     for (;;) {
+        board_buzzer_poll();
         identity_t update;
         if (xQueueReceive(s_updates, &update, 0) == pdTRUE) {
             ui_set_identity(&update);

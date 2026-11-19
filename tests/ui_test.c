@@ -3,9 +3,16 @@
 #include <string.h>
 #include "lvgl.h"
 #include "ui/ui.h"
+#include "ui/pages/wooden_fish_art.h"
 
 static uint16_t frame[240 * 320];
 static uint16_t buffer[240 * 20];
+static unsigned strikes;
+
+static void record_strike(void)
+{
+    ++strikes;
+}
 
 static lv_obj_t *find_text(lv_obj_t *parent, const char *text)
 {
@@ -68,7 +75,7 @@ int main(void)
     lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(display, buffer, NULL, sizeof(buffer), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(display, flush);
-    ui_init(identity_demo(), false);
+    ui_init(identity_demo(), false, record_strike);
     assert(ui_current_page() == UI_PAGE_IDENTITY);
     snapshot("identity.ppm");
     check_bounds(lv_screen_active());
@@ -95,6 +102,24 @@ int main(void)
         lv_obj_update_layout(lv_screen_active());
         check_bounds(lv_screen_active());
     }
+    ui_show_page(UI_PAGE_WOODEN_FISH);
+    lv_obj_t *counter = find_text(lv_screen_active(), "0");
+    assert(counter);
+    lv_obj_t *page = lv_obj_get_parent(counter);
+    lv_obj_t *fish = NULL;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(page); ++i) {
+        lv_obj_t *child = lv_obj_get_child(page, i);
+        if (lv_obj_check_type(child, &lv_image_class) && lv_image_get_src(child) == &wooden_fish_art) {
+            fish = child;
+            break;
+        }
+    }
+    assert(fish);
+    lv_obj_send_event(fish, LV_EVENT_CLICKED, NULL);
+    lv_obj_send_event(fish, LV_EVENT_CLICKED, NULL);
+    ui_show_page(UI_PAGE_SETTINGS);
+    ui_show_page(UI_PAGE_WOODEN_FISH);
+    assert(strikes == 2 && strcmp(lv_label_get_text(counter), "2") == 0);
     ui_show_page(UI_PAGE_DETAILS);
     snapshot("details.ppm");
     check_bounds(lv_screen_active());

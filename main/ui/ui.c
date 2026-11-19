@@ -2,6 +2,7 @@
 #include "ui_theme.h"
 #include "pages/identity_page.h"
 #include "pages/details_page.h"
+#include "pages/wooden_fish_page.h"
 
 static identity_page_t s_identity;
 static details_page_t s_details;
@@ -24,7 +25,7 @@ static lv_obj_t *placeholder(lv_obj_t *parent, const char *title, const char *st
     return page;
 }
 
-void ui_init(const identity_t *identity, bool touch_available)
+void ui_init(const identity_t *identity, bool touch_available, void (*on_wooden_fish_strike)(void))
 {
     lv_obj_t *screen = lv_screen_active();
     lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
@@ -40,7 +41,7 @@ void ui_init(const identity_t *identity, bool touch_available)
     identity_page_create(&s_identity, screen);
     details_page_create(&s_details, screen);
     s_pages[UI_PAGE_IDENTITY] = s_identity.root;
-    s_pages[UI_PAGE_WOODEN_FISH] = placeholder(screen, "Wooden Fish", "Coming soon");
+    s_pages[UI_PAGE_WOODEN_FISH] = wooden_fish_page_create(screen, on_wooden_fish_strike);
     s_pages[UI_PAGE_AI_CHAT] = placeholder(screen, "AI Chat", "Voice input coming soon");
     s_pages[UI_PAGE_SETTINGS] = placeholder(screen, "Settings", "Coming soon");
     s_pages[UI_PAGE_DETAILS] = s_details.root;

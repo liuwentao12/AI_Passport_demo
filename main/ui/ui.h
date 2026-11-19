@@ -13,7 +13,7 @@ typedef enum {
 
 /* All calls must originate from the single UI task. Create once, update many.
  * LVGL and the display must already be initialized. */
-void ui_init(const identity_t *identity, bool touch_available);
+void ui_init(const identity_t *identity, bool touch_available, void (*on_wooden_fish_strike)(void));
 void ui_set_identity(const identity_t *identity);
 void ui_show_page(ui_page_t page);
 ui_page_t ui_current_page(void);

@@ -11,7 +11,8 @@ add_executable(identity_test identity_test.c ../main/app/identity.c)
 target_include_directories(identity_test PRIVATE ../main)
 add_test(NAME identity_validation COMMAND identity_test)
 add_executable(ui_test ui_test.c ../main/app/identity.c ../main/ui/ui.c
-    ../main/ui/ui_theme.c ../main/ui/pages/identity_page.c ../main/ui/pages/details_page.c)
+    ../main/ui/ui_theme.c ../main/ui/pages/identity_page.c ../main/ui/pages/details_page.c
+    ../main/ui/pages/wooden_fish_page.c ../main/ui/pages/wooden_fish_art.c)
 target_include_directories(ui_test PRIVATE ../main)
 target_link_libraries(ui_test PRIVATE lvgl)
 add_test(NAME ui_layout_and_navigation COMMAND ui_test)

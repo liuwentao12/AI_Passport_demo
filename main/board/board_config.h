@@ -34,3 +34,8 @@
 #define BOARD_KEY2_GPIO         32
 #define BOARD_KEY3_GPIO         14
 #define BOARD_KEY4_GPIO         13
+
+/* GPIO35 is input-only on ESP32. Connect the buzzer signal to GPIO4. */
+#define BOARD_BUZZER_GPIO       4
+#define BOARD_BUZZER_ACTIVE     false /* true for a self-oscillating module */
+#define BOARD_BUZZER_ACTIVE_LOW false
