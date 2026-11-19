@@ -1,11 +1,15 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
 
 /* Initialize once. The application treats initialization errors as fatal.
  * The display and SPI bus live until reset; only the UI task may draw. */
 esp_err_t board_display_init(void);
+
+/* No-op when the board has no configured PWM backlight control. UI task only. */
+esp_err_t board_display_set_dimmed(bool dimmed);
 
 /* Coordinates are end-exclusive. Buffer is DMA-capable, wire-order RGB565.
  * Blocks until DMA completes: the caller can safely reuse pixels on return. */

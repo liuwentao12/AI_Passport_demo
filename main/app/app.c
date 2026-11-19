@@ -5,11 +5,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "board/display.h"
 #include "board/touch.h"
 #include "board/keys.h"
 #include "board/buzzer.h"
 #include "board/pn532.h"
 #include "ui/boot_screen.h"
+#include "ui/idle_lock.h"
 #include "ui/port/lvgl_port.h"
 #include "ui/port/touch_calibration.h"
 #include "ui/ui.h"
@@ -116,6 +118,12 @@ static const char *prepare_home(void)
     return NULL;
 }
 
+static void set_display_dimmed(bool dimmed)
+{
+    const esp_err_t err = board_display_set_dimmed(dimmed);
+    if (err != ESP_OK) ESP_LOGW("app", "Backlight update failed: %s", esp_err_to_name(err));
+}
+
 static void ui_task(void *argument)
 {
     (void)argument;
@@ -137,6 +145,7 @@ static void ui_task(void *argument)
     }
 
     bool calibrate = s_touch_initialized && !touch_available();
+    bool idle_started = false;
     for (;;) {
         uint32_t result;
         if (xTaskNotifyWait(0, UINT32_MAX, &result, 0) == pdTRUE) {
@@ -150,6 +159,10 @@ static void ui_task(void *argument)
                 ui_set_touch_available(touch_available());
                 calibrate = false;
             }
+            if (!idle_started && (touch_available() || (s_peripherals & KEYS_READY))) {
+                idle_lock_start(set_display_dimmed);
+                idle_started = true;
+            }
             if (s_peripherals & BUZZER_READY) board_buzzer_poll();
             nfc_update_t nfc;
             if (s_nfc_updates && xQueueReceive(s_nfc_updates, &nfc, 0) == pdTRUE) {
@@ -162,7 +175,8 @@ static void ui_task(void *argument)
             if (xQueueReceive(s_updates, &update, 0) == pdTRUE) {
                 ui_set_identity(&update);
             }
-            const uint32_t presses = (s_peripherals & KEYS_READY) ? board_keys_poll() : 0;
+            uint32_t presses = (s_peripherals & KEYS_READY) ? board_keys_poll() : 0;
+            if (presses && idle_lock_handle_input()) presses = 0;
             for (int key = 0; key < BOARD_KEY_COUNT; ++key) {
                 if (presses & (UINT32_C(1) << key)) {
                     ui_show_page(s_key_pages[key]);
@@ -173,6 +187,7 @@ static void ui_task(void *argument)
             }
         }
         uint32_t delay = lv_timer_handler();
+        idle_lock_poll();
         if (delay > 20) delay = 20;
         TickType_t ticks = pdMS_TO_TICKS(delay);
         vTaskDelay(ticks > 0 ? ticks : 1);

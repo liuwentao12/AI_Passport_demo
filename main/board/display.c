@@ -2,6 +2,7 @@
 #include "board_config.h"
 
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "esp_check.h"
 #include "esp_lcd_ili9341.h"
 #include "esp_lcd_panel_io.h"
@@ -12,6 +13,46 @@
 static esp_lcd_panel_handle_t s_panel;
 static SemaphoreHandle_t s_dma_done;
 static const char *TAG = "display";
+static bool s_backlight_ready;
+
+enum {
+    BACKLIGHT_FULL_DUTY = 255,
+    BACKLIGHT_DIM_DUTY = 90,
+};
+
+static esp_err_t init_backlight(void)
+{
+    if (BOARD_LCD_BACKLIGHT_GPIO < 0) return ESP_OK;
+    /* The buzzer owns timer 0 and channel 0. */
+    const ledc_timer_config_t timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_8_BIT,
+        .timer_num = LEDC_TIMER_1,
+        .freq_hz = 5000,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
+    ESP_RETURN_ON_ERROR(ledc_timer_config(&timer), TAG, "backlight timer");
+    const ledc_channel_config_t channel = {
+        .gpio_num = BOARD_LCD_BACKLIGHT_GPIO,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = LEDC_CHANNEL_1,
+        .timer_sel = LEDC_TIMER_1,
+        .duty = BACKLIGHT_FULL_DUTY,
+        .flags.output_invert = BOARD_LCD_BACKLIGHT_ACTIVE_LOW,
+    };
+    ESP_RETURN_ON_ERROR(ledc_channel_config(&channel), TAG, "backlight channel");
+    s_backlight_ready = true;
+    return ESP_OK;
+}
+
+esp_err_t board_display_set_dimmed(bool dimmed)
+{
+    if (!s_backlight_ready) return ESP_OK;
+    const uint32_t duty = dimmed ? BACKLIGHT_DIM_DUTY : BACKLIGHT_FULL_DUTY;
+    ESP_RETURN_ON_ERROR(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, duty),
+                        TAG, "backlight duty");
+    return ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+}
 
 static bool transfer_done(esp_lcd_panel_io_handle_t io,
                           esp_lcd_panel_io_event_data_t *event, void *context)
@@ -58,7 +99,12 @@ esp_err_t board_display_init(void)
     /* Apply after init, which writes the controller's MADCTL register. */
     ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(s_panel, BOARD_LCD_MIRROR_X,
                                             BOARD_LCD_MIRROR_Y), TAG, "orientation");
-    return esp_lcd_panel_disp_on_off(s_panel, true);
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "display on");
+    const esp_err_t backlight = init_backlight();
+    if (backlight != ESP_OK) {
+        ESP_LOGW(TAG, "Backlight PWM unavailable: %s", esp_err_to_name(backlight));
+    }
+    return ESP_OK;
 }
 
 esp_err_t board_display_draw(int x1, int y1, int x2, int y2, const uint8_t *pixels)

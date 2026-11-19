@@ -16,6 +16,8 @@
 #define BOARD_LCD_HEIGHT        320
 #define BOARD_LCD_PIXEL_CLOCK   (10 * 1000 * 1000)
 #define BOARD_LCD_BUFFER_ROWS   20
+#define BOARD_LCD_BACKLIGHT_GPIO -1   /* Optional PWM-capable backlight control pin. */
+#define BOARD_LCD_BACKLIGHT_ACTIVE_LOW false
 
 /* Panel scan direction: compensate for the reported left/right mirrored text.
  * These are controller settings; LVGL still uses a 240 x 320 portrait canvas. */

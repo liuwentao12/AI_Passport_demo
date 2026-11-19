@@ -6,6 +6,7 @@
 #include "board/board_config.h"
 #include "board/display.h"
 #include "board/touch.h"
+#include "ui/idle_lock.h"
 
 static uint32_t tick_ms(void)
 {
@@ -22,11 +23,11 @@ static void flush(lv_display_t *display, const lv_area_t *area, uint8_t *pixels)
 
 static void read_touch(lv_indev_t *input, lv_indev_data_t *data)
 {
-    (void)input;
     board_touch_sample_t sample = {0};
     data->state = LV_INDEV_STATE_RELEASED;
     if (board_touch_read(&sample) && sample.pressed &&
         sample.x < BOARD_LCD_WIDTH && sample.y < BOARD_LCD_HEIGHT) {
+        if (idle_lock_handle_input()) lv_indev_wait_release(input);
         data->point.x = sample.x;
         data->point.y = sample.y;
         data->state = LV_INDEV_STATE_PRESSED;

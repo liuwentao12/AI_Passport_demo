@@ -3,6 +3,7 @@
 #include <string.h>
 #include "lvgl.h"
 #include "ui/boot_screen.h"
+#include "ui/idle_lock.h"
 #include "ui/ui.h"
 #include "ui/pages/wooden_fish_art.h"
 
@@ -10,6 +11,8 @@ static uint16_t frame[240 * 320];
 static uint16_t buffer[240 * 20];
 static unsigned strikes;
 static unsigned home_preparations;
+static unsigned flushes;
+static bool dimmed;
 
 static void record_strike(void)
 {
@@ -37,6 +40,7 @@ static lv_obj_t *find_text(lv_obj_t *parent, const char *text)
 
 static void flush(lv_display_t *display, const lv_area_t *area, uint8_t *pixels)
 {
+    ++flushes;
     const int32_t width = lv_display_get_horizontal_resolution(display);
     const int32_t height = lv_display_get_vertical_resolution(display);
     uint16_t *src = (uint16_t *)pixels;
@@ -133,6 +137,39 @@ static void check_boot_screen(void)
     lv_display_set_default(lv_obj_get_display(top));
 }
 
+static void set_dimmed(bool value)
+{
+    dimmed = value;
+}
+
+static void check_idle_lock(void)
+{
+    lv_obj_t *top = lv_layer_top();
+    ui_show_page(UI_PAGE_WOODEN_FISH);
+    idle_lock_start(set_dimmed);
+    lv_tick_inc(59000);
+    assert(!idle_lock_handle_input());
+    lv_tick_inc(59999);
+    idle_lock_poll();
+    assert(!dimmed && !find_text(top, "SCREEN LOCKED"));
+    lv_tick_inc(1);
+    idle_lock_poll();
+    assert(dimmed && find_text(top, "SCREEN LOCKED"));
+    check_bounds(top);
+    assert(frame[0] != 0 && frame[0] < 0x2104);
+    const unsigned lock_flushes = flushes;
+    ui_set_identity(identity_demo());
+    lv_obj_invalidate(lv_screen_active());
+    run_frames(100);
+    assert(flushes == lock_flushes);
+    assert(idle_lock_handle_input());
+    assert(!dimmed && !find_text(top, "SCREEN LOCKED"));
+    assert(!idle_lock_handle_input());
+    run_frames(100);
+    assert(flushes > lock_flushes && ui_current_page() == UI_PAGE_WOODEN_FISH);
+    ui_show_page(UI_PAGE_IDENTITY);
+}
+
 int main(void)
 {
     lv_init();
@@ -141,6 +178,7 @@ int main(void)
     lv_display_set_buffers(display, buffer, NULL, sizeof(buffer), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(display, flush);
     check_boot_screen();
+    check_idle_lock();
     assert(ui_current_page() == UI_PAGE_IDENTITY);
     lv_obj_t *hint = find_text(lv_screen_active(), "TOUCH NOT CONFIGURED");
     assert(hint);
