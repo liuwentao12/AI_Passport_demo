@@ -6,7 +6,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "driver/i2s_std.h"
+#include "board/microphone.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -20,18 +20,9 @@
 #define WIFI_SSID "Xiaomi 15 Ultra"
 #define WIFI_PASSWORD "12345679"
 
-#define PIN_I2S_BCLK GPIO_NUM_26
-#define PIN_I2S_WS   GPIO_NUM_25
-#define PIN_I2S_DIN  GPIO_NUM_33
-#define SAMPLE_RATE 16000
 #define DURATION_SECONDS 3
-#define FRAME_SAMPLES 256
-#define PCM_GAIN 4
-#define WAV_DATA_BYTES (SAMPLE_RATE * DURATION_SECONDS * 2)
-#define WAV_TOTAL_BYTES (WAV_DATA_BYTES + 44)
 
 static const char *TAG = "phone-mic";
-static i2s_chan_handle_t s_rx = NULL;
 static EventGroupHandle_t s_wifi_event;
 #define WIFI_CONNECTED_BIT BIT0
 
@@ -65,59 +56,6 @@ static const char INDEX_HTML[] =
 "}catch(e){status.textContent='失败：'+e.message;}finally{button.disabled=false;}};"
 "</script></body></html>";
 
-static void put_u16_le(uint8_t *p, uint16_t n)
-{
-    p[0] = n & 0xff;
-    p[1] = (n >> 8) & 0xff;
-}
-
-static void put_u32_le(uint8_t *p, uint32_t n)
-{
-    p[0] = n & 0xff;
-    p[1] = (n >> 8) & 0xff;
-    p[2] = (n >> 16) & 0xff;
-    p[3] = (n >> 24) & 0xff;
-}
-
-static void write_wav_header(uint8_t h[44])
-{
-    memset(h, 0, 44);
-    memcpy(h, "RIFF", 4);
-    put_u32_le(h + 4, WAV_DATA_BYTES + 36);
-    memcpy(h + 8, "WAVEfmt ", 8);
-    put_u32_le(h + 16, 16);             // PCM fmt chunk size
-    put_u16_le(h + 20, 1);              // PCM (uncompressed)
-    put_u16_le(h + 22, 1);              // Mono
-    put_u32_le(h + 24, SAMPLE_RATE);
-    put_u32_le(h + 28, SAMPLE_RATE * 2); // bytes/second
-    put_u16_le(h + 32, 2);              // block align
-    put_u16_le(h + 34, 16);             // sample bits
-    memcpy(h + 36, "data", 4);
-    put_u32_le(h + 40, WAV_DATA_BYTES);
-}
-
-static void i2s_init(void)
-{
-    i2s_chan_config_t channel_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-    ESP_ERROR_CHECK(i2s_new_channel(&channel_cfg, NULL, &s_rx));
-
-    i2s_std_config_t std_cfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-            I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO),
-        .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
-            .bclk = PIN_I2S_BCLK,
-            .ws = PIN_I2S_WS,
-            .dout = I2S_GPIO_UNUSED,
-            .din = PIN_I2S_DIN,
-        },
-    };
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(s_rx, &std_cfg));
-    ESP_ERROR_CHECK(i2s_channel_enable(s_rx));
-    ESP_LOGI(TAG, "I2S microphone ready: 16000 Hz, 32-bit stereo slots, LEFT microphone");
-}
-
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
@@ -127,56 +65,31 @@ static esp_err_t index_handler(httpd_req_t *req)
 
 static esp_err_t wav_handler(httpd_req_t *req)
 {
-    // Captures on demand; only buffers one small DMA block, not the entire recording.
-    int32_t stereo[FRAME_SAMPLES * 2];
-    int16_t mono[FRAME_SAMPLES];
-    uint8_t wav_header[44];
-    size_t bytes_read = 0;
-    int remaining = SAMPLE_RATE * DURATION_SECONDS;
-    int delivered = 0;
-
-    // Restart the channel to discard any stale samples from a previous request.
-    esp_err_t err = i2s_channel_disable(s_rx);
-    if (err == ESP_OK) err = i2s_channel_enable(s_rx);
+    int16_t mono[MIC_FRAME_SAMPLES];
+    uint8_t header[MIC_WAV_HEADER_SIZE];
+    size_t remaining = MIC_SAMPLE_RATE * DURATION_SECONDS;
+    esp_err_t err = microphone_begin();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "I2S reset failed: %s", esp_err_to_name(err));
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "I2S reset failed");
-        return ESP_FAIL;
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "I2S start failed");
+        return err;
     }
 
     httpd_resp_set_type(req, "audio/wav");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    write_wav_header(wav_header);
-    if (httpd_resp_send_chunk(req, (const char *)wav_header, sizeof(wav_header)) != ESP_OK) {
-        return ESP_FAIL;
-    }
-
-    while (remaining > 0) {
-        int want = remaining < FRAME_SAMPLES ? remaining : FRAME_SAMPLES;
-        err = i2s_channel_read(s_rx, stereo, want * 2 * sizeof(int32_t),
-                               &bytes_read, pdMS_TO_TICKS(1500));
-        if (err != ESP_OK || bytes_read == 0 || (bytes_read % 8) != 0) {
-            ESP_LOGE(TAG, "I2S read failed: %s, %u bytes", esp_err_to_name(err), (unsigned)bytes_read);
+    microphone_wav_header(header, remaining * sizeof(int16_t));
+    err = httpd_resp_send_chunk(req, (const char *)header, sizeof(header));
+    while (err == ESP_OK && remaining > 0) {
+        size_t samples;
+        err = microphone_read(mono, remaining, &samples);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "I2S read failed: %s", esp_err_to_name(err));
             break;
         }
-        int got = bytes_read / (2 * sizeof(int32_t));
-        for (int i = 0; i < got; ++i) {
-            // INMP441 L/R connected to GND: LEFT slot. 24-bit MSB-aligned data
-            // inside a 32-bit signed slot. Keep the top 16 bits and add gain.
-            int32_t sample = (stereo[i * 2] >> 16) * PCM_GAIN;
-            if (sample > 32767) sample = 32767;
-            if (sample < -32768) sample = -32768;
-            mono[i] = (int16_t)sample;
-        }
-        if (httpd_resp_send_chunk(req, (const char *)mono, got * sizeof(int16_t)) != ESP_OK) {
-            ESP_LOGW(TAG, "HTTP client disconnected during recording");
-            return ESP_FAIL;
-        }
-        remaining -= got;
-        delivered += got;
+        err = httpd_resp_send_chunk(req, (const char *)mono, samples * sizeof(int16_t));
+        remaining -= samples;
     }
-    ESP_LOGI(TAG, "WAV generated: %d / %d samples", delivered, SAMPLE_RATE * DURATION_SECONDS);
-    // On a hardware read error, a truncated file is returned; the webpage detects its size.
+    microphone_end();
+    if (err != ESP_OK) return err;
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
@@ -270,7 +183,6 @@ void microphone_test_start(void)
     }
     ESP_ERROR_CHECK(err);
 
-    i2s_init();
     wifi_init();
 #if USE_ESP32_AP
     server_start();

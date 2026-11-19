@@ -1,4 +1,5 @@
 #include "app.h"
+#include "voice_chat.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -10,6 +11,7 @@
 #include "ui/port/lvgl_port.h"
 #include "ui/port/touch_calibration.h"
 #include "ui/ui.h"
+#include "ui/pages/voice_chat_page.h"
 #include "lvgl.h"
 
 static QueueHandle_t s_updates;
@@ -37,6 +39,8 @@ static void ui_task(void *argument)
     ESP_LOGI("app", "Identity UI ready; touch %s", board_touch_is_available() ? "enabled" : "not configured");
     for (;;) {
         board_buzzer_poll();
+        voice_chat_update_t voice;
+        if (voice_chat_poll(&voice)) voice_chat_page_update(&voice);
         identity_t update;
         if (xQueueReceive(s_updates, &update, 0) == pdTRUE) {
             ui_set_identity(&update);
@@ -45,6 +49,7 @@ static void ui_task(void *argument)
         for (int key = 0; key < BOARD_KEY_COUNT; ++key) {
             if (presses & (UINT32_C(1) << key)) {
                 ui_show_page(s_key_pages[key]);
+                if (key == BOARD_KEY3) voice_chat_press();
                 break;
             }
         }

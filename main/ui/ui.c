@@ -3,6 +3,7 @@
 #include "pages/identity_page.h"
 #include "pages/details_page.h"
 #include "pages/wooden_fish_page.h"
+#include "pages/voice_chat_page.h"
 
 static identity_page_t s_identity;
 static details_page_t s_details;
@@ -42,7 +43,7 @@ void ui_init(const identity_t *identity, bool touch_available, void (*on_wooden_
     details_page_create(&s_details, screen);
     s_pages[UI_PAGE_IDENTITY] = s_identity.root;
     s_pages[UI_PAGE_WOODEN_FISH] = wooden_fish_page_create(screen, on_wooden_fish_strike);
-    s_pages[UI_PAGE_AI_CHAT] = placeholder(screen, "AI Chat", "Voice input coming soon");
+    s_pages[UI_PAGE_AI_CHAT] = voice_chat_page_create(screen);
     s_pages[UI_PAGE_SETTINGS] = placeholder(screen, "Settings", "Coming soon");
     s_pages[UI_PAGE_DETAILS] = s_details.root;
     const char *names[] = {"Identity", "Muyu", "AI Chat", "Settings"};

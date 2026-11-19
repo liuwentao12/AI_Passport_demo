@@ -24,3 +24,12 @@ ESP32 + ILI9341（240×320 竖屏）的 LVGL 身份卡应用，使用 ESP-IDF 6.
 | 更改引脚 | `main/board/board_config.h` |
 
 编译、烧录和硬件验证由用户执行；当前不宣称完整构建或上板验证通过。主机测试源码位于 `tests/`，执行方式见开发指南。
+
+## AI 语音问答
+
+1. 复制 `main/app/voice_config.example.h` 为 `main/app/voice_config.local.h`，填入 2.4 GHz 手机热点的 SSID、密码和硅基流动中国站 API Key。Git 已忽略本地文件，烧录后的固件包含这些值，请把固件也留在本地。
+2. 初次烧录这一版本时写入完整固件和分区表。工程默认启用 1500 KiB 应用分区、系统 CA 证书包和思源黑体。ESP-IDF 构建会通过组件管理器拉取 cJSON 并更新依赖锁。
+3. 按 KEY3（GPIO14）进入 AI Chat 并开始录音。说一句短问题，再按 KEY3 停止。录音满 2.5 秒自动停止，短于 0.25 秒会提示重试。
+4. ESP32 连接热点并通过 NTP 校时，将 16 kHz、16 位单声道 WAV 直接发给 SenseVoiceSmall。识别文本发给默认免费聊天模型 `Qwen/Qwen2.5-7B-Instruct`。问题和回答可上下滑动查看。每次按键开启一轮独立问答。
+
+聊天请求最多 120 个输出 token，屏幕回答最多 480 个 UTF-8 字节。遇到 `Model unavailable` 时，在硅基流动模型目录核对可用的免费模型，再修改本地 `VOICE_CHAT_MODEL`。
