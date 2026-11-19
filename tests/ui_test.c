@@ -77,6 +77,19 @@ int main(void)
     lv_display_set_flush_cb(display, flush);
     ui_init(identity_demo(), false, record_strike);
     assert(ui_current_page() == UI_PAGE_IDENTITY);
+    lv_obj_t *hint = find_text(lv_screen_active(), "TOUCH NOT CONFIGURED");
+    assert(hint);
+    static const char long_status[] =
+        "NFC sharing status that is deliberately longer than the width of the footer label";
+    ui_set_nfc_status(long_status);
+    lv_obj_update_layout(lv_screen_active());
+    assert(lv_label_get_text(hint) != long_status);
+    ui_show_page(UI_PAGE_SETTINGS);
+    assert(strcmp(lv_label_get_text(hint), "TOUCH NOT CONFIGURED") == 0);
+    ui_show_page(UI_PAGE_IDENTITY);
+    assert(strncmp(lv_label_get_text(hint), "NFC sharing", 11) == 0);
+    ui_set_nfc_status(NULL);
+    assert(strcmp(lv_label_get_text(hint), "TOUCH NOT CONFIGURED") == 0);
     snapshot("identity.ppm");
     check_bounds(lv_screen_active());
     uint32_t children = lv_obj_get_child_count(lv_screen_active());

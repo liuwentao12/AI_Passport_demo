@@ -33,3 +33,18 @@ ESP32 + ILI9341（240×320 竖屏）的 LVGL 身份卡应用，使用 ESP-IDF 6.
 4. ESP32 连接热点并通过 NTP 校时，将 16 kHz、16 位单声道 WAV 直接发给 SenseVoiceSmall。识别文本发给默认免费聊天模型 `Qwen/Qwen2.5-7B-Instruct`。问题和回答可上下滑动查看。每次按键开启一轮独立问答。
 
 聊天请求最多 120 个输出 token，屏幕回答最多 480 个 UTF-8 字节。遇到 `Model unavailable` 时，在硅基流动模型目录核对可用的免费模型，再修改本地 `VOICE_CHAT_MODEL`。
+
+## KEY1 NFC 分享
+
+断开 PN532 和 ESP32 的电源，把模块拨到 HSU / UART，再接线并上电。UART 为 115200、8N1。
+
+| PN532 | ESP32 |
+| --- | --- |
+| RX | GPIO5（ESP32 TX） |
+| TX | GPIO34（ESP32 RX） |
+| GND | GND |
+| VCC | 模块支持 3.3 V 供电时接 3V3，供电要求以板卡标注为准 |
+
+UART 使用 3.3 V 逻辑电平。GPIO5 是启动配置脚，接模块的 RX 输入。拨码按模块上的 HSU 标注设置，IRQ 和复位线可留空。
+
+按 KEY1 进入身份卡。串口日志 `UART online, PN532 firmware ...` 表示模块已应答。出现 `Tap phone near NFC` 后，将手机 NFC 区域对准模块天线。约 20 秒内，手机可以读取只读 NDEF 网址 `https://github.com/liuwentao12`。若提示 `Check PN532 and wiring`，检查 HSU 模式、供电和 TX/RX 是否交叉。

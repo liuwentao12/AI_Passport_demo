@@ -8,6 +8,7 @@
 #include "board/touch.h"
 #include "board/keys.h"
 #include "board/buzzer.h"
+#include "board/pn532.h"
 #include "ui/port/lvgl_port.h"
 #include "ui/port/touch_calibration.h"
 #include "ui/ui.h"
@@ -15,6 +16,53 @@
 #include "lvgl.h"
 
 static QueueHandle_t s_updates;
+static QueueHandle_t s_nfc_updates;
+static bool s_nfc_busy;
+static bool s_nfc_ready;
+static const char s_share_url[] = "https://github.com/liuwentao12";
+
+typedef struct {
+    const char *text;
+    bool finished;
+} nfc_update_t;
+
+static void nfc_ready(void)
+{
+    s_nfc_ready = true;
+    const nfc_update_t update = {"Tap phone near NFC", false};
+    xQueueOverwrite(s_nfc_updates, &update);
+}
+
+static void nfc_task(void *argument)
+{
+    (void)argument;
+    s_nfc_ready = false;
+    bool read;
+    const esp_err_t err = pn532_share_url(s_share_url, nfc_ready, &read);
+    const char *status;
+    if (read) status = "GitHub link shared";
+    else if (s_nfc_ready && err == ESP_ERR_TIMEOUT) status = "NFC timed out. Press KEY1";
+    else {
+        ESP_LOGW("app", "PN532 session failed: %s", esp_err_to_name(err));
+        status = "Check PN532 and wiring";
+    }
+    const nfc_update_t update = {status, true};
+    xQueueOverwrite(s_nfc_updates, &update);
+    vTaskDelete(NULL);
+}
+
+static void start_nfc_share(void)
+{
+    if (s_nfc_busy) return;
+    if (!s_nfc_updates) s_nfc_updates = xQueueCreate(1, sizeof(nfc_update_t));
+    if (!s_nfc_updates || xTaskCreate(nfc_task, "nfc", 4096, NULL, 4, NULL) != pdPASS) {
+        ui_set_nfc_status("NFC unavailable. Try again");
+        return;
+    }
+    s_nfc_busy = true;
+    ui_set_nfc_status("Starting NFC...");
+}
+
 static const ui_page_t s_key_pages[BOARD_KEY_COUNT] = {
     [BOARD_KEY1] = UI_PAGE_IDENTITY,
     [BOARD_KEY2] = UI_PAGE_WOODEN_FISH,
@@ -39,6 +87,11 @@ static void ui_task(void *argument)
     ESP_LOGI("app", "Identity UI ready; touch %s", board_touch_is_available() ? "enabled" : "not configured");
     for (;;) {
         board_buzzer_poll();
+        nfc_update_t nfc;
+        if (s_nfc_updates && xQueueReceive(s_nfc_updates, &nfc, 0) == pdTRUE) {
+            ui_set_nfc_status(nfc.text);
+            if (nfc.finished) s_nfc_busy = false;
+        }
         voice_chat_update_t voice;
         if (voice_chat_poll(&voice)) voice_chat_page_update(&voice);
         identity_t update;
@@ -49,6 +102,7 @@ static void ui_task(void *argument)
         for (int key = 0; key < BOARD_KEY_COUNT; ++key) {
             if (presses & (UINT32_C(1) << key)) {
                 ui_show_page(s_key_pages[key]);
+                if (key == BOARD_KEY1) start_nfc_share();
                 if (key == BOARD_KEY3) voice_chat_press();
                 break;
             }

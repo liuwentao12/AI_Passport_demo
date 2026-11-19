@@ -39,3 +39,8 @@
 #define BOARD_BUZZER_GPIO       4
 #define BOARD_BUZZER_ACTIVE     false /* true for a self-oscillating module */
 #define BOARD_BUZZER_ACTIVE_LOW false
+
+/* PN532 HSU, 3.3 V logic. Cross UART TX and RX. */
+#define BOARD_NFC_UART          UART_NUM_2
+#define BOARD_NFC_TX_GPIO       5
+#define BOARD_NFC_RX_GPIO       34

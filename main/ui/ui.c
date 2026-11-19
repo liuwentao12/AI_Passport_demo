@@ -11,6 +11,10 @@ static lv_obj_t *s_pages[UI_PAGE_COUNT];
 static lv_obj_t *s_buttons[UI_PAGE_DETAILS];
 static lv_obj_t *s_button_labels[UI_PAGE_DETAILS];
 static lv_obj_t *s_details_button;
+static lv_obj_t *s_hint;
+static const char *s_nfc_status;
+static const char *s_default_hint;
+static const char *s_displayed_hint;
 static ui_page_t s_page;
 
 static void navigation(lv_event_t *event)
@@ -55,9 +59,11 @@ void ui_init(const identity_t *identity, bool touch_available, void (*on_wooden_
         s_button_labels[i] = ui_text(s_buttons[i], names[i], 0, 11, 53, &lv_font_montserrat_12, UI_COLOR_INK);
         lv_obj_set_style_text_align(s_button_labels[i], LV_TEXT_ALIGN_CENTER, 0);
     }
-    lv_obj_t *hint = ui_text(screen, touch_available ? "LOCAL DEMO PROFILE" : "TOUCH NOT CONFIGURED",
-                             12, 305, 216, &lv_font_montserrat_12, UI_COLOR_MUTED);
-    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    s_default_hint = touch_available ? "LOCAL DEMO PROFILE" : "TOUCH NOT CONFIGURED";
+    s_nfc_status = NULL;
+    s_hint = ui_text(screen, s_default_hint, 12, 305, 216, &lv_font_montserrat_12, UI_COLOR_MUTED);
+    s_displayed_hint = s_default_hint;
+    lv_obj_set_style_text_align(s_hint, LV_TEXT_ALIGN_CENTER, 0);
     ui_set_identity(identity);
     ui_show_page(UI_PAGE_IDENTITY);
 }
@@ -69,10 +75,26 @@ void ui_set_identity(const identity_t *identity)
     details_page_update(&s_details, identity);
 }
 
+static void update_hint(void)
+{
+    const char *text = s_nfc_status && s_page == UI_PAGE_IDENTITY ? s_nfc_status : s_default_hint;
+    if (text == s_displayed_hint) return;
+    /* LV_LABEL_LONG_DOT writes ellipsis into the label's text buffer. */
+    lv_label_set_text(s_hint, text);
+    s_displayed_hint = text;
+}
+
+void ui_set_nfc_status(const char *status)
+{
+    s_nfc_status = status;
+    update_hint();
+}
+
 void ui_show_page(ui_page_t page)
 {
     if ((unsigned)page >= UI_PAGE_COUNT) return;
     s_page = page;
+    update_hint();
     for (int i = 0; i < UI_PAGE_COUNT; ++i) {
         if (i == (int)page) lv_obj_remove_flag(s_pages[i], LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(s_pages[i], LV_OBJ_FLAG_HIDDEN);
