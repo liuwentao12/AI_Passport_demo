@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "board/touch.h"
 #include "ui/port/lvgl_port.h"
+#include "ui/port/touch_calibration.h"
 #include "ui/ui.h"
 #include "lvgl.h"
 
@@ -15,6 +16,7 @@ static void ui_task(void *argument)
 {
     (void)argument;
     ui_port_init();
+    ui_touch_calibrate();
     ui_init(identity_demo(), board_touch_is_available());
     ESP_LOGI("app", "Identity UI ready; touch %s", board_touch_is_available() ? "enabled" : "not configured");
     for (;;) {

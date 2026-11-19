@@ -21,3 +21,9 @@
  * These are controller settings; LVGL still uses a 240 x 320 portrait canvas. */
 #define BOARD_LCD_MIRROR_X      true
 #define BOARD_LCD_MIRROR_Y      false
+
+/* XPT2046 shares SPI2 with the LCD. PEN is unconnected: poll Z1/Z2. */
+#define BOARD_TOUCH_CLOCK_HZ    (1000 * 1000)
+#define BOARD_TOUCH_PRESSURE    400
+/* Set true for one boot to replace the saved calibration, then restore false. */
+#define BOARD_TOUCH_FORCE_CALIBRATION false

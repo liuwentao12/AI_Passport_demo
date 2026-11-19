@@ -36,6 +36,7 @@ static void read_touch(lv_indev_t *input, lv_indev_data_t *data)
 void ui_port_init(void)
 {
     ESP_ERROR_CHECK(board_display_init());
+    ESP_ERROR_CHECK(board_touch_init());
     lv_init();
     lv_tick_set_cb(tick_ms);
     lv_display_t *display = lv_display_create(BOARD_LCD_WIDTH, BOARD_LCD_HEIGHT);

@@ -26,7 +26,7 @@ static bool transfer_done(esp_lcd_panel_io_handle_t io,
 esp_err_t board_display_init(void)
 {
     ESP_RETURN_ON_FALSE(s_dma_done == NULL, ESP_ERR_INVALID_STATE, TAG, "Already initialized");
-    /* Until a real touch driver is configured, keep its CS inactive. */
+    /* Keep touch deselected until board_touch_init adds it to the shared bus. */
     ESP_RETURN_ON_ERROR(gpio_reset_pin(BOARD_TOUCH_CS), TAG, "touch CS reset");
     ESP_RETURN_ON_ERROR(gpio_set_direction(BOARD_TOUCH_CS, GPIO_MODE_OUTPUT), TAG, "touch CS direction");
     ESP_RETURN_ON_ERROR(gpio_set_level(BOARD_TOUCH_CS, 1), TAG, "touch CS inactive");

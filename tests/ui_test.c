@@ -3,7 +3,6 @@
 #include <string.h>
 #include "lvgl.h"
 #include "ui/ui.h"
-#include "board/touch.h"
 
 static uint16_t frame[240 * 320];
 static uint16_t buffer[240 * 20];
@@ -70,10 +69,6 @@ int main(void)
     lv_display_set_buffers(display, buffer, NULL, sizeof(buffer), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(display, flush);
     ui_init(identity_demo(), false);
-    board_touch_sample_t sample = {.pressed = true, .x = 500, .y = 500};
-    assert(!board_touch_is_available());
-    assert(!board_touch_read(&sample));
-    assert(!sample.pressed);
     assert(ui_current_page() == UI_PAGE_IDENTITY);
     snapshot("identity.ppm");
     check_bounds(lv_screen_active());
