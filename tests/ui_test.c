@@ -1,0 +1,117 @@
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "lvgl.h"
+#include "ui/ui.h"
+#include "board/touch.h"
+
+static uint16_t frame[240 * 320];
+static uint16_t buffer[240 * 20];
+
+static lv_obj_t *find_text(lv_obj_t *parent, const char *text)
+{
+    if (lv_obj_has_flag(parent, LV_OBJ_FLAG_HIDDEN)) return NULL;
+    if (lv_obj_check_type(parent, &lv_label_class) &&
+        strcmp(lv_label_get_text(parent), text) == 0) return parent;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(parent); ++i) {
+        lv_obj_t *found = find_text(lv_obj_get_child(parent, i), text);
+        if (found) return found;
+    }
+    return NULL;
+}
+
+static void flush(lv_display_t *display, const lv_area_t *area, uint8_t *pixels)
+{
+    uint16_t *src = (uint16_t *)pixels;
+    for (int y = area->y1; y <= area->y2; ++y) {
+        for (int x = area->x1; x <= area->x2; ++x) {
+            assert(x >= 0 && x < 240 && y >= 0 && y < 320);
+            frame[y * 240 + x] = *src++;
+        }
+    }
+    lv_display_flush_ready(display);
+}
+
+static void snapshot(const char *path)
+{
+    lv_refr_now(NULL);
+    FILE *out = fopen(path, "wb");
+    assert(out);
+    fprintf(out, "P6\n240 320\n255\n");
+    for (unsigned i = 0; i < sizeof(frame) / sizeof(frame[0]); ++i) {
+        unsigned char rgb[3] = {
+            (unsigned char)(((frame[i] >> 11) & 31) * 255 / 31),
+            (unsigned char)(((frame[i] >> 5) & 63) * 255 / 63),
+            (unsigned char)((frame[i] & 31) * 255 / 31),
+        };
+        fwrite(rgb, 1, 3, out);
+    }
+    fclose(out);
+}
+
+static void check_bounds(lv_obj_t *parent)
+{
+    for (uint32_t i = 0; i < lv_obj_get_child_count(parent); ++i) {
+        lv_obj_t *child = lv_obj_get_child(parent, i);
+        if (lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t bounds;
+        lv_obj_get_coords(child, &bounds);
+        assert(bounds.x1 >= 0 && bounds.y1 >= 0 && bounds.x2 < 240 && bounds.y2 < 320);
+        /* A scroll viewport must fit; its clipped content can extend below it. */
+        if (!lv_obj_has_flag(child, LV_OBJ_FLAG_SCROLLABLE)) check_bounds(child);
+    }
+}
+
+int main(void)
+{
+    lv_init();
+    lv_display_t *display = lv_display_create(240, 320);
+    lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
+    lv_display_set_buffers(display, buffer, NULL, sizeof(buffer), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(display, flush);
+    ui_init(identity_demo(), false);
+    board_touch_sample_t sample = {.pressed = true, .x = 500, .y = 500};
+    assert(!board_touch_is_available());
+    assert(!board_touch_read(&sample));
+    assert(!sample.pressed);
+    assert(ui_current_page() == UI_PAGE_IDENTITY);
+    snapshot("identity.ppm");
+    check_bounds(lv_screen_active());
+    uint32_t children = lv_obj_get_child_count(lv_screen_active());
+    lv_obj_t *details_button = lv_obj_get_parent(find_text(lv_screen_active(), "Details"));
+    lv_obj_t *identity_button = lv_obj_get_parent(find_text(lv_screen_active(), "Identity"));
+    lv_mem_monitor_t before, after;
+    lv_mem_monitor(&before);
+    for (int i = 0; i < 100; ++i) {
+        lv_obj_send_event(details_button, LV_EVENT_CLICKED, NULL);
+        assert(ui_current_page() == UI_PAGE_DETAILS);
+        lv_obj_send_event(identity_button, LV_EVENT_CLICKED, NULL);
+    }
+    assert(lv_obj_get_child_count(lv_screen_active()) == children);
+    lv_mem_monitor(&after);
+    assert(after.free_size == before.free_size);
+    ui_show_page(UI_PAGE_DETAILS);
+    snapshot("details.ppm");
+    check_bounds(lv_screen_active());
+    identity_t longest = *identity_demo();
+    memset(longest.name, 'W', sizeof(longest.name) - 1);
+    memset(longest.description, 'W', sizeof(longest.description) - 1);
+    ui_set_identity(&longest);
+    lv_obj_update_layout(lv_screen_active());
+    lv_obj_t *full_name = find_text(lv_screen_active(), longest.name);
+    lv_obj_t *full_description = find_text(lv_screen_active(), longest.description);
+    assert(full_name && full_description);
+    assert(lv_label_get_long_mode(full_name) == LV_LABEL_LONG_WRAP);
+    assert(lv_label_get_long_mode(full_description) == LV_LABEL_LONG_WRAP);
+    assert(lv_obj_get_scroll_bottom(lv_obj_get_parent(full_description)) > 0);
+    assert(find_text(lv_screen_active(), longest.number));
+    assert(find_text(lv_screen_active(), longest.role));
+    check_bounds(lv_screen_active());
+    ui_show_page(UI_PAGE_IDENTITY);
+    lv_obj_update_layout(lv_screen_active());
+    check_bounds(lv_screen_active());
+    ui_show_page((ui_page_t)999);
+    assert(ui_current_page() == UI_PAGE_IDENTITY);
+    puts("UI layout, data update and 100 page round trips passed.");
+    return 0;
+}
