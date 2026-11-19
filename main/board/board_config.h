@@ -27,3 +27,10 @@
 #define BOARD_TOUCH_PRESSURE    400
 /* Set true for one boot to replace the saved calibration, then restore false. */
 #define BOARD_TOUCH_FORCE_CALIBRATION false
+
+/* Active-low switches to GND. -1 leaves the input disabled. On the classic
+ * ESP32, GPIO9/10/11 are Flash signals and must not be used for the keys. */
+#define BOARD_KEY1_GPIO         27
+#define BOARD_KEY2_GPIO         32
+#define BOARD_KEY3_GPIO         14
+#define BOARD_KEY4_GPIO         13

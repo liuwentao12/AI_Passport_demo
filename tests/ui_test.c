@@ -85,6 +85,16 @@ int main(void)
     assert(lv_obj_get_child_count(lv_screen_active()) == children);
     lv_mem_monitor(&after);
     assert(after.free_size == before.free_size);
+    const char *tabs[] = {"Muyu", "AI Chat", "Settings"};
+    const ui_page_t destinations[] = {UI_PAGE_WOODEN_FISH, UI_PAGE_AI_CHAT, UI_PAGE_SETTINGS};
+    for (unsigned i = 0; i < sizeof(tabs) / sizeof(tabs[0]); ++i) {
+        lv_obj_t *label = find_text(lv_screen_active(), tabs[i]);
+        assert(label);
+        lv_obj_send_event(lv_obj_get_parent(label), LV_EVENT_CLICKED, NULL);
+        assert(ui_current_page() == destinations[i]);
+        lv_obj_update_layout(lv_screen_active());
+        check_bounds(lv_screen_active());
+    }
     ui_show_page(UI_PAGE_DETAILS);
     snapshot("details.ppm");
     check_bounds(lv_screen_active());

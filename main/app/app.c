@@ -5,12 +5,19 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "board/touch.h"
+#include "board/keys.h"
 #include "ui/port/lvgl_port.h"
 #include "ui/port/touch_calibration.h"
 #include "ui/ui.h"
 #include "lvgl.h"
 
 static QueueHandle_t s_updates;
+static const ui_page_t s_key_pages[BOARD_KEY_COUNT] = {
+    [BOARD_KEY1] = UI_PAGE_IDENTITY,
+    [BOARD_KEY2] = UI_PAGE_WOODEN_FISH,
+    [BOARD_KEY3] = UI_PAGE_AI_CHAT,
+    [BOARD_KEY4] = UI_PAGE_SETTINGS,
+};
 
 static void ui_task(void *argument)
 {
@@ -18,11 +25,22 @@ static void ui_task(void *argument)
     ui_port_init();
     ui_touch_calibrate();
     ui_init(identity_demo(), board_touch_is_available());
+    esp_err_t keys_status = board_keys_init();
+    if (keys_status != ESP_OK) {
+        ESP_LOGE("app", "Keys disabled: %s", esp_err_to_name(keys_status));
+    }
     ESP_LOGI("app", "Identity UI ready; touch %s", board_touch_is_available() ? "enabled" : "not configured");
     for (;;) {
         identity_t update;
         if (xQueueReceive(s_updates, &update, 0) == pdTRUE) {
             ui_set_identity(&update);
+        }
+        const uint32_t presses = keys_status == ESP_OK ? board_keys_poll() : 0;
+        for (int key = 0; key < BOARD_KEY_COUNT; ++key) {
+            if (presses & (UINT32_C(1) << key)) {
+                ui_show_page(s_key_pages[key]);
+                break;
+            }
         }
         uint32_t delay = lv_timer_handler();
         if (delay > 20) delay = 20;

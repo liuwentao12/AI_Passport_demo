@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "main.c" "microphone_test.c" "touchscreen_test.c"
          "app/app.c" "app/identity.c"
-         "board/display.c" "board/touch.c" "board/touch_transform.c"
+         "board/display.c" "board/touch.c" "board/touch_transform.c" "board/keys.c"
          "ui/port/touch_calibration.c"
          "ui/port/lvgl_port.c" "ui/ui.c" "ui/ui_theme.c"
          "ui/pages/identity_page.c" "ui/pages/details_page.c"
